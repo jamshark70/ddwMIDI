@@ -59,12 +59,13 @@ MIDIPort {
 	// sourceInports: in MIDIIn.connect(inport, device), inport need not be the same
 	// index as sources[i] -- this lets you specify how you want them
 	// sources[0..2] -- you can do MIDIPort.init([2, 0, 1]) and you'll get
-	// MIDIIn.connect(0, MIDIClient.sources[2])
-	// MIDIIn.connect(1, MIDIClient.sources[0])
-	// MIDIIn.connect(2, MIDIClient.sources[1])
+	// MIDIIn.connect(0, MIDIClient.externalSources[2])
+	// MIDIIn.connect(1, MIDIClient.externalSources[0])
+	// MIDIIn.connect(2, MIDIClient.externalSources[1])
 	*init { |sourceInports|
 		var srctemp;
 		var randsrc;
+		var extSources;
 		// now set up MIDIIn
 		// if a MIDI message is on a channel not defined, it will be passed
 		// to whatever function was in MIDIIn before initialization
@@ -72,8 +73,10 @@ MIDIPort {
 			MIDIClient.initialized.not.if({
 				MIDIClient.init;	// open the ports
 			});
+			// in Linux, externalSources is a .select: cache the result to save time
+			extSources = MIDIClient.externalSources;
 
-			numPorts = max(numPorts, MIDIClient.sources.size + 1);
+			numPorts = max(numPorts, extSources.size);
 
 			// not enough inports specified, fill with consecutive integers
 			// if 3 sources and you supply [1], result is [1, 0, 2]
@@ -85,7 +88,7 @@ MIDIPort {
 
 			sources = Array.new(numPorts);
 			sourceInports.do({ arg sourceIndex, i;
-				var	port = this.portForSource(MIDIClient.sources.tryPerform(\at, sourceIndex).tryPerform(\uid));
+				var	port = this.portForSource(extSources.tryPerform(\at, sourceIndex).tryPerform(\uid));
 				if(port.src.device != "fake") {
 					MIDIIn.connect(i, port.src);  // connect it
 				};
