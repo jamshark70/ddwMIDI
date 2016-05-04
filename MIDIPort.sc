@@ -90,7 +90,12 @@ MIDIPort {
 			sourceInports.do({ arg sourceIndex, i;
 				var	port = this.portForSource(extSources.tryPerform(\at, sourceIndex).tryPerform(\uid));
 				if(port.src.device != "fake") {
-					MIDIIn.connect(i, port.src);  // connect it
+					try {
+						MIDIIn.connect(i, port.src);  // connect it
+					} { |err|
+						err.reportError;
+						"^^^ WARNING Error during MIDIPort init, attempting to continue".postln;
+					};
 				};
 			});
 			srctemp = MIDIEndPoint("All devices", "All devices", 0x80000001);
