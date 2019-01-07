@@ -8,42 +8,53 @@ MIDISyncClock {
 	classvar	responseFuncs;
 
 	classvar	<ticks, <beats, <startTime,
-			<tempo, <beatDur,
-			<beatsPerBar = 4, <barsPerBeat = 0.25, <baseBar, <baseBarBeat;
+	<tempo, <beatDur,
+	<beatsPerBar = 4, <barsPerBeat = 0.25, <baseBar, <baseBarBeat;
 
-		// private vars
-	classvar	lastTickTime, <queue;
+	// private vars
+	classvar	lastTickTime, <queue, medianRoutine, medianSize = 7;
 
 	*initClass {
 		responseFuncs = IdentityDictionary[
-				// tick
+			// tick
 			8 -> { |data|
-				var	lastTickDelta, nextTime, task, tickIndex;
-					// use nextTime as temp var to calculate tempo
-					// this is inherently inaccurate; tempo will fluctuate slightly around base
-				nextTime = Main.elapsedTime;
+				var	lastTickDelta, lastQueueTime, nextTime, task, tickIndex;
+				var saveClock;
+				// use nextTime as temp var to calculate tempo
+				// this is inherently inaccurate; tempo will fluctuate slightly around base
+				nextTime = SystemClock.seconds;
 				lastTickDelta = nextTime - (lastTickTime ? 0);
 				lastTickTime = nextTime;
-				tempo = (beatDur = lastTickDelta * ticksPerBeat).reciprocal;
+				beatDur = medianRoutine.next(lastTickDelta) * ticksPerBeat;
+				tempo = beatDur.reciprocal;
 
 				ticks = ticks + 1;
 				beats = ticks / ticksPerBeat;
 
-					// while loop needed because more than one thing may be scheduled for this tick
-				{ (queue.topPriority ?? { inf }) <= ticks }.while({
-						// perform the action, and check if it should be rescheduled
-					(nextTime = (task = queue.pop).awake(beats, this.seconds, this)).isNumber.if({
+				saveClock = thisThread.clock;  // "should" be SystemClock
+				thisThread.clock = this;
+				// while loop needed because more than one thing may be scheduled for this tick
+				while {
+					lastQueueTime = queue.topPriority;
+					// if nil, queue is empty
+					lastQueueTime.notNil and: { lastQueueTime <= ticks }
+				} {
+					// perform the action, and check if it should be rescheduled
+					task = queue.pop;
+					nextTime = task.awake(lastQueueTime /*beats*/, this.seconds, this);
+					if(nextTime.isNumber) {
 						this.sched(nextTime, task, 0)
-					});
-				});
+					};
+				};
+				thisThread.clock = saveClock;
 			},
-				// start -- scheduler should be clear first
+			// start -- scheduler should be clear first
 			10 -> { |data|
 				startTime = lastTickTime = Main.elapsedTime;
 				beats = baseBar = baseBarBeat = 0;
 				ticks = -1;  // because we expect a clock message to come next, should be 0
 			},
-				// stop
+			// stop
 			12 -> { |data|
 				this.clear;
 			}
@@ -51,11 +62,11 @@ MIDISyncClock {
 	}
 
 	*init {
-			// retrieve MIDI sources first
-			// assumes sources[0] is the MIDI clock source
-			// if not, you should init midiclient yourself and manually
-			// assign the right port to inport == 0
-			// using MIDIIn.connect(0, MIDIClient.sources[x])
+		// retrieve MIDI sources first
+		// assumes sources[0] is the MIDI clock source
+		// if not, you should init midiclient yourself and manually
+		// assign the right port to inport == 0
+		// using MIDIIn.connect(0, MIDIClient.sources[x])
 		MIDIClient.initialized.not.if({
 			MIDIClient.init;
 			MIDIClient.sources.do({ arg src, i;
@@ -65,6 +76,32 @@ MIDISyncClock {
 		MIDIIn.sysrt = { |src, index, data| MIDISyncClock.tick(index, data) };
 		queue = PriorityQueue.new;
 		beats = ticks = baseBar = baseBarBeat = 0;
+		medianRoutine = Routine { |inval|
+			var i, mid = medianSize div: 2,
+			values = Array(medianSize), order = Array(medianSize);
+			loop {
+				// if arrays are full, drop oldest
+				if(values.size == medianSize) {
+					i = order.minIndex;
+					values.removeAt(i);
+					order.removeAt(i);
+					order.size.do { |i| order[i] = order[i] - 1 };  // in place, avoid GC load
+				};
+				i = values.detectIndex { |item| item >= inval };
+				if(i.isNil) {
+					values = values.add(inval);
+					order = order.add(values.size);
+				} {
+					values = values.insert(i, inval);
+					order = order.insert(i, values.size);
+				};
+				if(values.size < medianSize) {
+					inval = values.blendAt((values.size - 1) * 0.5).yield;
+				} {
+					inval = values[mid].yield;  // optimized, when it's full
+				};
+			};
+		};
 	}
 
 	*schedAbs { arg when, task;
@@ -111,17 +148,24 @@ MIDISyncClock {
 	}
 
 	*secs2beats { |seconds|
-		^seconds * tempo;
+		^beats
+		// A bit of a dodge here. This might break something.
+		// But 'tempo' is unstable so the following might lurch forward and back,
+		// causing even worse problems.
+		// ^seconds * tempo;
+		// So we will support the normal case: a stable, increasing time base.
+		// This works for patterns but it might f*** up code that expects to coordinate
+		// multiple clocks by converting all of their beats to seconds.
 	}
 
-		// elapsed time doesn't make sense because this clock only advances when told
-		// from outside - but, -play methods need elapsedBeats to calculate quant
+	// elapsed time doesn't make sense because this clock only advances when told
+	// from outside - but, -play methods need elapsedBeats to calculate quant
 	*elapsedBeats { ^beats }
 	*seconds { ^startTime.notNil.if(Main.elapsedTime - startTime, nil) }
 
 	*clear { queue.clear }
 
-		// for debugging
+	// for debugging
 	*dumpQueue {
 		{ queue.topPriority.notNil }.while({
 			Post << "\n" << queue.topPriority << "\n";

@@ -1,0 +1,103 @@
+TITLE:: MIDISyncClock
+summary:: A clock that follows incoming MIDI clock messages
+categories:: External Control>MIDI
+related:: Classes/TempoClock
+
+DESCRIPTION::
+A substitute clock that follows MIDI clock messages from an external source, with some caveats:
+
+If possible, for MIDI clock sync, it is recommended to use SuperCollider as the clock source, so that you can control for server latency. (See link::Classes/MIDIOut#-latency:: -- MIDI messages going out from SuperCollider can be delayed by an amount matching the server's latency. This will ensure better sync than is possible by responding to an external source.)
+
+If it is absolutely necessary to follow an external source, use this class.
+
+Subsection:: Usage
+
+Recommended procedure:
+
+Numberedlist::
+## Be sure the clock source is not running.
+## In SuperCollider (receiving machine), initialize MIDIClient (link::Classes/MIDIClient#*init::).
+## Connect incoming port 0 to the device from which clock messages are coming (link::Classes/MIDIIn#*connect::).
+## Initialize MIDISyncClock (link::Classes/MIDISyncClock#*init::).
+## Start the clock source.
+::
+
+The clock source should begin by sending a MIDI clock "start" message, resetting MIDISyncClock to beat 0. This is essential for beat sync. If you start the clock source first, and then initialize MIDISyncClock, the beats will probably not line up.
+
+NOTE:: MIDI clock "tick" messages emphasis::do not provide any information about the position within the bar::. The only way to be sure beats are synchronized is to initialize MIDISyncClock first, and then start the external source. This is a limitation in the MIDI protocol; there is nothing I can do about that. ::
+
+NOTE:: Set the server's latency as low as possible. MIDI clock messages assume the receiving device will play instantaneously; there is no compensation for OSC messaging latency. ::
+
+Subsection:: Limitations
+
+list::
+## The MIDI standard specifies 24 clock pulses per quarter note. MIDISyncClock does not attempt to interpolate scheduling times between pulses. Any events scheduled for a time in between pulses will fire on exactly the next pulse. Subdivisions of the beat other than duple and triple will therefore be slightly inexact (but, at 60 bpm, one pulse is about 42 ms, so any timing deviation will be hard to detect by ear).
+
+## The tempo measurement is slightly unstable, generally within a percentage point. This is a necessary consequence of reacting to messages whose timing is not 100% accurate.
+
+## Because the tempo measurement is unstable, MIDISyncClock cannot properly support link::Classes/TempoClock#-secs2beats::. Instead, it returns current beats. This is not a problem for normal usage (playing Tasks and patterns). It may be a problem if you need to coordinate the MIDI clock with other clocks at different tempi.
+::
+
+
+CLASSMETHODS::
+
+Most of the methods of MIDISyncClock attempt compatibility with TempoClock. Consult link::Classes/TempoClock:: documentation for details on scheduling events and managing metrical position.
+
+One exception is link::Classes/TempoClock#-tempo::. MIDISyncClock derives its tempo from the external source; for obvious reasons, then, you cannot override the tempo by code::tempo_::.
+
+METHOD:: init
+Initialize MIDISyncClock's internal state. Must be called before starting the external clock source.
+
+PRIVATE:: barsPerBeat, baseBar, baseBarBeat, beatDur, beats, beats2secs, beatsPerBar, clear, dumpQueue, elapsedBeats, nextTimeOnGrid, play, queue, sched, schedAbs, seconds, secs2beats, setMeterAtBeat, startTime, tempo, tick, ticks, ticksPerBeat, ticksPerBeat
+
+
+
+EXAMPLES::
+
+This demonstration will generate MIDI clock messages within SuperCollider.
+
+code::
+// Initialize the MIDI objects first
+MIDIClient.init;     // step 2 above
+MIDIIn.connectAll;   // step 3
+MIDISyncClock.init;  // step 4
+
+// This next block runs a clock source in SC.
+// If you have an external clock source, use it AND SKIP THIS PART.
+// Otherwise, see MIDIOut documentation for details on connecting
+// SC MIDIOut to... itself :D
+
+(
+// You might need to change the string here: IAC MIDI on Mac?
+d = MIDIClient.destinations.detect({ |ep| ep.device == "SuperCollider" });
+m = MIDIOut.newByName(d.device, d.name);
+Tdef(\mc).quant = -1;
+Tdef(\mc, {
+	var tick = 1/24;
+	m.start;
+	loop {
+		m.midiClock;
+		tick.wait;
+	};
+}).play;
+ShutDown.add { Tdef(\mc).stop };
+)
+
+// Use the clock
+// For an external source, set latency as low as possible
+s.latency = 0.03;
+
+// quant: -1 = start on a barline
+(
+p = Pbind(
+	\degree, Pseq([
+		-7,
+		Pwhite(0, 7, 15)
+	], inf),
+	\dur, 0.25,
+	\amp, Pseq([0.5, Pn(0.1, 15)], inf)
+).play(MIDISyncClock, quant: -1);
+)
+
+p.stop;
+::
