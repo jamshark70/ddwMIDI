@@ -4,9 +4,9 @@ categories:: External Control>MIDI
 related:: Classes/TempoClock
 
 DESCRIPTION::
-A substitute clock that follows MIDI clock messages from an external source, with some caveats:
+A substitute clock that follows MIDI clock messages from an external source, with some caveats.
 
-If possible, for MIDI clock sync, it is recommended to use SuperCollider as the clock source, so that you can control for server latency. (See link::Classes/MIDIOut#-latency:: -- MIDI messages going out from SuperCollider can be delayed by an amount matching the server's latency. This will ensure better sync than is possible by responding to an external source.)
+NOTE:: If possible, for MIDI clock sync, it is recommended to use SuperCollider as the clock source, so that you can control for server latency. (See link::Classes/MIDIOut#-latency:: -- MIDI messages going out from SuperCollider can be delayed by an amount matching the server's latency. This will ensure better sync than is possible by responding to an external source.) ::
 
 If it is absolutely necessary to follow an external source, use this class.
 
