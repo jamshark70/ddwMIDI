@@ -41,7 +41,7 @@ MIDISyncClock {
 				} {
 					// perform the action, and check if it should be rescheduled
 					task = queue.pop;
-					nextTime = task.awake(lastQueueTime /*beats*/, this.seconds, this);
+					nextTime = task.awake(lastQueueTime / ticksPerBeat, this.seconds, this);
 					if(nextTime.isNumber) {
 						this.sched(nextTime, task, 0)
 					};
