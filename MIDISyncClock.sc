@@ -133,6 +133,10 @@ MIDISyncClock {
 		^roundUp(this.beats - offset, quant) + offset;
 	}
 
+	*timeToNextBeat { |quant = 1|
+		^quant.nextTimeOnGrid(this) - this.beats
+	}
+
 	*beatsPerBar_ { |newBeatsPerBar = 4|
 		this.setMeterAtBeat(newBeatsPerBar, beats)
 	}
