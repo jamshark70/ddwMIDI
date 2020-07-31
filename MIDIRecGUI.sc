@@ -41,7 +41,7 @@ MIDIRecGUI : HJHObjectGui {
 			// implement quantize later -- actually, apply quantize at translation time
 			model.view = this;		// so it can find me
 			this.refresh(model);
-			if(iMadeMasterLayout) { masterLayout.recursiveResize };
+			if(iMadeLayout) { mainLayout.recursiveResize };
 		});
 	}
 
