@@ -88,6 +88,7 @@ Please be sure you have run MIDISyncClock.init
 				MIDIIn.connect(i, src);		// connect it
 			});
 		});
+		CmdPeriod.add(this);
 		MIDIIn.sysrt = { |src, index, data| MIDISyncClock.tick(index, data) };
 		queue = PriorityQueue.new;
 		beats = baseBar = baseBarBeat = 0;
@@ -186,7 +187,14 @@ Please be sure you have run MIDISyncClock.init
 	// all clocks' 'seconds' should agree
 	*seconds { ^SystemClock.seconds }
 
-	*clear { queue.clear }
+	*clear { |releaseNodes = true|
+		while { queue.topPriority.notNil } {
+			queue.pop.removedFromScheduler(releaseNodes)
+		};
+		queue.clear;
+	}
+
+	*doOnCmdPeriod { this.clear(true) }
 
 	// for debugging
 	*dumpQueue {
