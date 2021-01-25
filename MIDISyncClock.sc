@@ -20,6 +20,18 @@ MIDISyncClock {
 			8 -> { |data|
 				var	lastTickDelta, lastQueueTime, nextTime, task, tickIndex;
 				var saveClock;
+
+				if(startTime <= 0) {
+					"\n\nWARNING: MIDISyncClock has received a 'tick' message without first receiving any 'start' message.
+
+You now have no guarantee that MIDISyncClock
+is following the clock source's barlines.
+
+Please be sure you have run MIDISyncClock.init
+**BEFORE** starting the clock source.\n".postln;
+					startTime = SystemClock.seconds;
+				};
+
 				// use nextTime as temp var to calculate tempo
 				// this is inherently inaccurate; tempo will fluctuate slightly around base
 				nextTime = SystemClock.seconds;
@@ -78,7 +90,9 @@ MIDISyncClock {
 		});
 		MIDIIn.sysrt = { |src, index, data| MIDISyncClock.tick(index, data) };
 		queue = PriorityQueue.new;
-		beats = ticks = baseBar = baseBarBeat = 0;
+		beats = baseBar = baseBarBeat = 0;
+		ticks = -1;
+		startTime = 0;
 		medianRoutine = Routine { |inval|
 			var i, mid = medianSize div: 2,
 			values = Array(medianSize), order = Array(medianSize);
@@ -168,7 +182,9 @@ MIDISyncClock {
 	// elapsed time doesn't make sense because this clock only advances when told
 	// from outside - but, -play methods need elapsedBeats to calculate quant
 	*elapsedBeats { ^beats }
-	*seconds { ^startTime.notNil.if(Main.elapsedTime - startTime, nil) }
+	// 'seconds' is defined as a stable time base throughout SC
+	// all clocks' 'seconds' should agree
+	*seconds { ^SystemClock.seconds }
 
 	*clear { queue.clear }
 
