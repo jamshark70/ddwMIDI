@@ -17,16 +17,30 @@ Recommended procedure:
 Numberedlist::
 ## Be sure the clock source is not running.
 ## In SuperCollider (receiving machine), initialize MIDIClient (link::Classes/MIDIClient#*init::).
-## Connect incoming port 0 to the device from which clock messages are coming (link::Classes/MIDIIn#*connect::).
+## code::MIDIIn.connectAll::. (I believe code::sysrt:: messages are received from any available port. If SC fails to respond, you might try connecting incoming port 0 to the device from which clock messages are coming: link::Classes/MIDIIn#*connect::. In theory this should be unnecessary).
 ## Initialize MIDISyncClock (link::Classes/MIDISyncClock#*init::).
 ## Start the clock source.
+## (Optional) Set link::Classes/MIDISyncClock#*schedOffset::
 ::
 
 The clock source should begin by sending a MIDI clock "start" message, resetting MIDISyncClock to beat 0. This is essential for beat sync. If you start the clock source first, and then initialize MIDISyncClock, the beats will probably not line up.
 
 NOTE:: MIDI clock "tick" messages emphasis::do not provide any information about the position within the bar::. The only way to be sure beats are synchronized is to initialize MIDISyncClock first, and then start the external source. This is a limitation in the MIDI protocol; there is nothing I can do about that. ::
 
-NOTE:: Set the server's latency as low as possible. MIDI clock messages assume the receiving device will play instantaneously; there is no compensation for OSC messaging latency. ::
+Subsection:: Latency compensation
+A manual scheduling offset may be given by hand.
+
+code::
+MIDISyncClock.schedOffset = -8;
+::
+
+A negative code::schedOffset:: means that tasks scheduled on MIDISyncClock will occur earlier than normal. If code::schedOffset == -8::, and you schedule a task for beat 100.0, in reality it will be scheduled at beat code::100.0 - (8/24) = 99.6666667::. By awakening early, server commands with latency should be executed close to the clock source time.
+
+In theory, the number of ticks to offset should be code::server_latency.neg * tempo * ticksPerBeat:: (where the last is usually 24). But, you may need to add some amount for audio driver latency (making the offset closer to 0). Because audio driver latency is unknown within the language client, it is up to you to tune the scheduling offset by hand. (Important: Offset should be negative!)
+
+Note that the task is literally scheduled early. Routines or patterns that depend on clock beats being specific values are likely not to work with a nonzero schedOffset.
+
+Limitation: The offset depends on tempo. So, if the clock source's tempo changes, the offset will be incorrect. It is difficult to compensate for this (and, to be honest, I'm not that interested in the problem). So, for now, if you expect tempo changes, it's advised emphasis::not:: to use code::schedOffset::; instead, set server latency to nil and the soundcard to the smallest possible buffer size, to try to reduce the impact of latency.
 
 Subsection:: Limitations
 
@@ -47,6 +61,15 @@ One exception is link::Classes/TempoClock#-tempo::. MIDISyncClock derives its te
 
 METHOD:: init
 Initialize MIDISyncClock's internal state. Must be called before starting the external clock source.
+
+METHOD:: schedOffset
+Change the MIDI clock's scheduling offset.
+
+argument:: newOffset
+An number of ticks by which to offset (recommended to be an integer). A negative offset shifts scheduling earlier. This is the normal case for latency compensation.
+
+argument:: reschedule
+A Boolean indicating whether or not to reschedule items currently on the clock to account for the new scheduling offset. The default is true, so that you should hear the result of the offset immediately.
 
 PRIVATE:: barsPerBeat, baseBar, baseBarBeat, beatDur, beats, beats2secs, beatsPerBar, clear, dumpQueue, elapsedBeats, nextTimeOnGrid, play, queue, sched, schedAbs, seconds, secs2beats, setMeterAtBeat, startTime, tempo, tick, ticks, ticksPerBeat, ticksPerBeat
 

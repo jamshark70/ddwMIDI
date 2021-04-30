@@ -10,15 +10,16 @@ MIDISyncClock {
 	classvar	<ticks, <beats, <startTime,
 	<tempo, <beatDur,
 	<beatsPerBar = 4, <barsPerBeat = 0.25, <baseBar, <baseBarBeat;
+	classvar	<schedOffset = 0;
 
 	// private vars
-	classvar	lastTickTime, <queue, medianRoutine, medianSize = 7;
+	classvar	lastTickTime, <queue, meanRoutine, meanSize = 7;
 
 	*initClass {
 		responseFuncs = IdentityDictionary[
 			// tick
 			8 -> { |data|
-				var	lastTickDelta, lastQueueTime, nextTime, task, tickIndex;
+				var	lastTickDelta, lastQueueTime, lastBeat, nextTime, task, tickIndex;
 				var saveClock;
 
 				if(startTime <= 0) {
@@ -37,7 +38,7 @@ Please be sure you have run MIDISyncClock.init
 				nextTime = SystemClock.seconds;
 				lastTickDelta = nextTime - (lastTickTime ? 0);
 				lastTickTime = nextTime;
-				beatDur = medianRoutine.next(lastTickDelta) * ticksPerBeat;
+				beatDur = meanRoutine.next(lastTickDelta) * ticksPerBeat;
 				tempo = beatDur.reciprocal;
 
 				ticks = ticks + 1;
@@ -54,9 +55,15 @@ Please be sure you have run MIDISyncClock.init
 					task = queue.pop;
 					thisThread.clock = this;
 					protect {
-						nextTime = task.awake(lastQueueTime / ticksPerBeat, this.seconds, this);
+						// I had tried to "fake" the correct beat:
+						// from the task's perspective, lastBeat should be (qt - schedOffset) / ticks
+						// but rescheduling got *very* dicey,
+						// especially when scheduling something whose job is to schedule something
+						// so I abandoned that
+						lastBeat = lastQueueTime / ticksPerBeat;
+						nextTime = task.awake(lastBeat, this.seconds, this);
 						if(nextTime.isNumber) {
-							this.sched(nextTime, task, 0)
+							this.sched(nextTime, task, 0);
 						};
 					} {
 						thisThread.clock = saveClock;
@@ -68,10 +75,12 @@ Please be sure you have run MIDISyncClock.init
 				startTime = lastTickTime = Main.elapsedTime;
 				beats = baseBar = baseBarBeat = 0;
 				ticks = -1;  // because we expect a clock message to come next, should be 0
+				this.changed(\start);
 			},
 			// stop
 			12 -> { |data|
 				this.clear;
+				this.changed(\stop);
 			}
 		];
 	}
@@ -94,39 +103,32 @@ Please be sure you have run MIDISyncClock.init
 		beats = baseBar = baseBarBeat = 0;
 		ticks = -1;
 		startTime = 0;
-		medianRoutine = Routine { |inval|
-			var i, mid = medianSize div: 2,
-			values = Array(medianSize), order = Array(medianSize);
+		meanRoutine = Routine { |inval|
+			var i = 0, twice = meanSize * 2,
+			values = Array.fill(meanSize, 0);
+			var runningSum = 0;
 			loop {
-				// if arrays are full, drop oldest
-				if(values.size == medianSize) {
-					i = order.minIndex;
-					values.removeAt(i);
-					order.removeAt(i);
-					order.size.do { |i| order[i] = order[i] - 1 };  // in place, avoid GC load
-				};
-				i = values.detectIndex { |item| item >= inval };
-				if(i.isNil) {
-					values = values.add(inval);
-					order = order.add(values.size);
+				runningSum = runningSum - values.wrapAt(i) + inval;
+				values.wrapPut(i, inval);
+				i = i + 1;
+				if(i == twice) { i = i - meanSize };
+				if(i < meanSize) {
+					inval = (runningSum / i).yield;
 				} {
-					values = values.insert(i, inval);
-					order = order.insert(i, values.size);
-				};
-				if(values.size < medianSize) {
-					inval = values.blendAt((values.size - 1) * 0.5).yield;
-				} {
-					inval = values[mid].yield;  // optimized, when it's full
+					inval = (runningSum / meanSize).yield;
 				};
 			};
 		};
 	}
 
-	*schedAbs { arg when, task;
-		queue.put(when * ticksPerBeat, task);
+	*initialized { ^queue.notNil }
+
+	*schedAbs { arg when, task, offset(this.schedOffset);
+		queue.put(when * ticksPerBeat + offset, task);
 	}
 
-	*sched { arg when, task, adjustment = 0;
+	// rescheduling forces adjustment = 0
+	*sched { arg when, task, adjustment(this.schedOffset);
 		queue.put((when * ticksPerBeat) + ticks + adjustment, task);
 	}
 
@@ -138,6 +140,20 @@ Please be sure you have run MIDISyncClock.init
 		when = when.nextTimeOnGrid(this);
 		if(when.notNil) {
 			this.schedAbs(when, task);
+		};
+	}
+
+	*schedOffset_ { |newOffset = 0, reschedule = true|
+		var diff = newOffset - schedOffset, newTime;
+		var newQueue;
+		schedOffset = newOffset;
+		if(reschedule) {
+			newQueue = PriorityQueue.new;
+			while { queue.topPriority.notNil } {
+				newTime = queue.topPriority + diff;
+				newQueue.put(newTime, queue.pop);
+			};
+			queue = newQueue;
 		};
 	}
 
@@ -203,4 +219,6 @@ Please be sure you have run MIDISyncClock.init
 			queue.pop.dumpFromQueue;
 		});
 	}
+
+	*bindClassName { ^TempoClock }
 }
