@@ -34,11 +34,7 @@ code::
 MIDISyncClock.schedOffset = -8;
 ::
 
-A negative code::schedOffset:: means that tasks scheduled on MIDISyncClock will occur earlier than normal. If code::schedOffset == -8::, and you schedule a task for beat 100.0, in reality it will be scheduled at beat code::100.0 - (8/24) = 99.6666667::. By awakening early, server commands with latency should be executed close to the clock source time.
-
 In theory, the number of ticks to offset should be code::server_latency.neg * tempo * ticksPerBeat:: (where the last is usually 24). But, you may need to add some amount for audio driver latency (making the offset closer to 0). Because audio driver latency is unknown within the language client, it is up to you to tune the scheduling offset by hand. (Important: Offset should be negative!)
-
-Note that the task is literally scheduled early. Routines or patterns that depend on clock beats being specific values are likely not to work with a nonzero schedOffset.
 
 Limitation: The offset depends on tempo. So, if the clock source's tempo changes, the offset will be incorrect. It is difficult to compensate for this (and, to be honest, I'm not that interested in the problem). So, for now, if you expect tempo changes, it's advised emphasis::not:: to use code::schedOffset::; instead, set server latency to nil and the soundcard to the smallest possible buffer size, to try to reduce the impact of latency.
 
