@@ -123,12 +123,12 @@ Please be sure you have run MIDISyncClock.init
 
 	*initialized { ^queue.notNil }
 
-	*schedAbs { arg when, task, offset(this.schedOffset);
-		queue.put(when * ticksPerBeat + offset, task);
+	*schedAbs { arg when, task;
+		queue.put(when * ticksPerBeat, task);
 	}
 
 	// rescheduling forces adjustment = 0
-	*sched { arg when, task, adjustment(this.schedOffset);
+	*sched { arg when, task, adjustment(0);
 		queue.put((when * ticksPerBeat) + ticks + adjustment, task);
 	}
 
@@ -144,17 +144,9 @@ Please be sure you have run MIDISyncClock.init
 	}
 
 	*schedOffset_ { |newOffset = 0, reschedule = true|
-		var diff = newOffset - schedOffset, newTime;
-		var newQueue;
+		var diff = schedOffset - newOffset;
 		schedOffset = newOffset;
-		if(reschedule) {
-			newQueue = PriorityQueue.new;
-			while { queue.topPriority.notNil } {
-				newTime = queue.topPriority + diff;
-				newQueue.put(newTime, queue.pop);
-			};
-			queue = newQueue;
-		};
+		ticks = ticks + diff;  // just shift the ticks!
 	}
 
 	*nextTimeOnGrid { arg quant = 1, phase = 0;
@@ -178,7 +170,7 @@ Please be sure you have run MIDISyncClock.init
 		baseBarBeat = beats;
 		beatsPerBar = newBeatsPerBar;
 		barsPerBeat = beatsPerBar.reciprocal;
-		this.changed;
+		this.changed(\meter);
 	}
 
 	*beats2secs { |beats|
