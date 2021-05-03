@@ -12,6 +12,10 @@ MIDISyncClock {
 	<beatsPerBar = 4, <barsPerBeat = 0.25, <baseBar, <baseBarBeat;
 	classvar	<schedOffset = 0;
 
+	// Kalman variables
+	classvar <>clockDriftFactor = 0.00001,  // "process noise" in Kalman literature
+	<>measurementError = 0.005;  // "measurement uncertainty"
+
 	// private vars
 	classvar	lastTickTime, <queue, meanRoutine, meanSize = 7;
 
@@ -103,21 +107,15 @@ Please be sure you have run MIDISyncClock.init
 		beats = baseBar = baseBarBeat = 0;
 		ticks = -1;
 		startTime = 0;
-		meanRoutine = Routine { |inval|
-			var i = 0, twice = meanSize * 2,
-			values = Array.fill(meanSize, 0);
-			var runningSum = 0;
+		meanRoutine = Routine { |value|
+			var uncertainty = 10000, estimate = 1, kGain;
 			loop {
-				runningSum = runningSum - values.wrapAt(i) + inval;
-				values.wrapPut(i, inval);
-				i = i + 1;
-				if(i == twice) { i = i - meanSize };
-				if(i < meanSize) {
-					inval = (runningSum / i).yield;
-				} {
-					inval = (runningSum / meanSize).yield;
-				};
-			};
+				uncertainty = uncertainty + clockDriftFactor;
+				kGain = uncertainty / (uncertainty + measurementError);
+				estimate = estimate + (kGain * (value - estimate));  // "estimate current state"
+				uncertainty = (1 - kGain) * uncertainty;
+				value = estimate.yield;
+			}
 		};
 	}
 
