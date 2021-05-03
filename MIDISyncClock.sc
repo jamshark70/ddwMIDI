@@ -1,5 +1,5 @@
 
-// a "clock" that slaves itself to midi clock messages
+// a clock that follows midi clock messages
 // only one port can be the midi source; hence this is a singleton
 // H. James Harkins -- jamshark70@dewdrop-world.net
 
